@@ -1,0 +1,189 @@
+-- SQLBook: Code
+--Consolidating data from all monthly tables into a single table named 'all_sales'
+
+CREATE TABLE all_sales like sales_april_2019;
+insert into all_sales SELECT * from sales_april_2019;
+insert into all_sales SELECT * from sales_august_2019;
+insert into all_sales SELECT * from sales_december_2019;
+insert into all_sales SELECT * from sales_february_2019;
+insert into all_sales SELECT * from sales_january_2019;
+insert into all_sales SELECT * from sales_july_2019;
+insert into all_sales SELECT * from sales_june_2019;
+insert into all_sales SELECT * from sales_march_2019;
+insert into all_sales SELECT * from sales_may_2019;
+insert into all_sales SELECT * from sales_november_2019;
+insert into all_sales SELECT * from sales_october_2019;
+insert into all_sales SELECT * from sales_september_2019;
+
+
+
+-- SQLBook: Code
+
+-- Rename the columns to improve usability.
+
+ALTER TABLE `all_sales`
+    CHANGE `Order ID` `Order_ID` TEXT;
+
+ALTER TABLE `all_sales`
+    CHANGE `Quantity Ordered` `Quantity_Ordered` TEXT;
+
+ALTER TABLE `all_sales`
+    CHANGE `Price Each` `Price_each` TEXT;
+
+    
+ALTER TABLE `all_sales`
+    CHANGE `Order Date` `Order_Date` TEXT;
+
+    
+ALTER TABLE `all_sales`
+    CHANGE `Purchase Address` `Purchase_Address` TEXT;
+
+
+-- SQLBook: Code
+-- Create a separate table to make our changes without affecting the original data the new one called "als"
+
+CREATE TABLE als like all_sales;
+insert INTO als SELECT* from all_sales;
+-- SQLBook: Markup
+### Dealing with Dublicates
+
+-- SQLBook: Code
+--Checking for duplicates using a common table expression (CTE)
+
+-- building the inital query
+SELECT * , ROW_NUMBER() OVER (PARTITION BY Order_ID,
+Product,
+Quantity_Ordered,
+Price_each,
+Order_Date,
+Purchase_Address ) AS 'ROW_NUM'FROM als;
+
+-- building the common table expression (CTE)
+with cte as (SELECT * , ROW_NUMBER() OVER (PARTITION BY Order_ID,
+Product,
+Quantity_Ordered,
+Price_each,
+Order_Date,
+Purchase_Address ) AS `ROW_NUM` FROM als)
+SELECT *  FROM cte WHERE `ROW_NUM` > 1;
+-- SQLBook: Code
+-- Deleting duplicates by using subquery
+
+-- 1- formating the subquery
+SELECT * FROM(SELECT * , ROW_NUMBER() OVER (PARTITION BY Order_ID,
+Product,
+Quantity_Ordered,
+Price_each,
+Order_Date,
+Purchase_Address ) AS `ROW_NUM` FROM als) as sub WHERE `ROW_NUM`> 1;
+
+-- 2- Deleting step
+DELETE FROM als
+WHERE `Order_ID` IN (SELECT `Order_ID` FROM ( SELECT Order_ID, 
+               ROW_NUMBER() OVER (
+                   PARTITION BY Order_ID,
+                                Product,
+                                Quantity_Ordered,
+                                Price_each,
+                                Order_Date,
+                                Purchase_Address 
+                   ORDER BY Order_ID
+               ) AS ROW_NUM FROM als ) AS sub WHERE ROW_NUM >1);
+-- SQLBook: Markup
+#### Dealing With Time
+-- SQLBook: Code
+-- We'll add a new column to include the time only,
+-- then format it appropriately 
+-- then convert it into a true date time type.
+ALTER TABLE als
+ADD `time` TEXT;
+
+UPDATE als
+SET `time` = TRIM(SUBSTRING(`Order_Date`,LOCATE(' ',`Order_Date`))) ;
+
+SELECT time,cast(TRIM(`time`) as time) FROM ALS;
+
+UPDATE als
+SET `time` = cast(TRIM(`time`) as time);
+
+ALTER TABLE als 
+MODIFY COLUMN `time` TIME;
+
+SELECT `time` FROM ALS;
+-- SQLBook: Markup
+#### Dealing With Date
+-- SQLBook: Code
+-- We'll add a new column to include the date only,
+-- then format it appropriately 
+-- then convert it into a true date data type.
+ALTER TABLE als
+ADD `Date_Only` TEXT;
+
+UPDATE als
+SET `Date_Only` = TRIM(LEFT(`Order_Date`,LOCATE(' ',`Order_Date`)));
+
+SELECT DATE_ONLY,STR_TO_DATE(TRIM(`Date_Only`),'%m/%d/%y') FROM ALS;
+
+UPDATE als
+SET `Date_Only` = STR_TO_DATE(TRIM(`Date_Only`),'%m/%d/%y');
+
+ALTER TABLE als 
+MODIFY COLUMN `Date_Only` DATE;
+
+SELECT DATE_ONLY FROM ALS;
+-- SQLBook: Markup
+### deleting the null values
+-- SQLBook: Code
+SELECT * FROM  als
+WHERE `Order_ID` IS NULL OR `Order_ID` =" ";
+
+DELETE FROM als
+WHERE `Order_ID` IS NULL OR `Order_ID` =" ";
+-- SQLBook: Markup
+#### Question 1: What was the best month for sales? How much was earned that month? 
+-- SQLBook: Code
+SELECT DATE_FORMAT(DATE_ONLY,'%M') AS Month_name,
+SUM(Price_each) AS Total_sales
+FROM als
+GROUP BY Month_name
+ORDER BY Total_sales DESC
+LIMIT 5;
+
+-- December is typically the most profitable month for sales. according to this data
+-- SQLBook: Markup
+#### Question 2: What city sold the most product?
+-- SQLBook: Code
+SELECT Purchase_Address FROM als;
+SELECT
+SUBSTRING_INDEX(SUBSTRING_INDEX(Purchase_Address, ',', 2),",",-1) as city
+,sum(Price_each) as total_sales
+from als
+GROUP BY city
+ORDER BY total_sales DESC
+LIMIT 5;
+--  San Francisco is the most city sold the most product
+-- SQLBook: Markup
+#### Question 3: What time should we display advertisements to maximize likelihood of customer's buying product?
+-- SQLBook: Code
+SELECT TIME_FORMAT(time,"%H") as Hour,count(*) as count FROM als
+GROUP BY Hour
+ORDER BY count ASC ;
+-- from the 03:01 is the time were the lower portion of total sales , therfore we need to dislplay more ads in this time
+-- SQLBook: Markup
+#### Question 4: What the content and total cost of the best 10 recites ?
+-- SQLBook: Code
+SELECT Order_ID,
+       GROUP_CONCAT(product ORDER BY product SEPARATOR ", "),
+       SUM(Price_each) AS total_cost,
+       Purchase_Address
+FROM als
+GROUP BY Order_ID, Purchase_Address
+ORDER BY total_cost DESC
+LIMIT 10;
+-- It's not surprising that the five receipts have identical content but different addresses.
+-- becasue it's a fabricated data for educational purposes.
+-- SQLBook: Markup
+#### What product sold the most? Why do you think it sold the most?
+-- SQLBook: Code
+SELECT DISTINCT product ,count(*) as count from als GROUP BY product 
+order by count DESC ;
